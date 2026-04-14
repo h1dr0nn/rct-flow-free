@@ -357,12 +357,19 @@ export function GridCanvas({
             ctx.arc(tx, ty, CELL_SIZE * 0.35, 0, Math.PI * 2)
             ctx.fill()
             
-            // Draw 'P' on circles with 50% alpha
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)' 
-            ctx.font = `900 ${CELL_SIZE * 0.45}px Inter, Arial`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText('P', tx, ty + 2) // Offset down by 2px to center perfectly
+            // Draw 'P' (Parking) Icon using Lucide design language
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
+            ctx.lineWidth = 2.5 // Correct Lucide-style thickness
+            ctx.lineCap = 'round'
+            ctx.lineJoin = 'round'
+            const iconScale = (CELL_SIZE * 0.45) / 24
+            ctx.save()
+            // Center the 24x24 path at (tx, ty)
+            ctx.translate(tx - 12 * iconScale, ty - 12 * iconScale)
+            ctx.scale(iconScale, iconScale)
+            const lucideP = new Path2D('M9 17V7h4a3 3 0 0 1 0 6H9')
+            ctx.stroke(lucideP)
+            ctx.restore()
 
             // Source square (at current animated position)
             let squareScale = 1

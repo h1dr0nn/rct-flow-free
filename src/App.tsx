@@ -11,6 +11,8 @@ import {
   type Arrow
 } from './stores'
 
+import { ParkingCircle } from 'lucide-react'
+
 function App() {
   const [currentLevelIndex, setCurrentLevelIndex] = useState(0)
   const { gridSize, setGridSize, backgroundColor, filenamePrefix } = useSettings()
@@ -275,9 +277,11 @@ function App() {
                           className="absolute left-5 top-1/2 -translate-y-1/2 h-4 bg-purple-500/40 rounded-full origin-left"
                         />
 
-                        {/* Circle - Flat with 'P' (Moved after Line for z-index) */}
-                        <div className="w-12 h-12 bg-purple-500 rounded-full relative flex items-center justify-center leading-none z-10">
-                           <span className="text-white/50 font-black text-2xl select-none -translate-y-0.5">P</span>
+                        {/* Circle - Exact Gameplay Match (Filled circle + P Path) */}
+                        <div className="w-12 h-12 bg-purple-500 rounded-full relative flex items-center justify-center z-10 shadow-lg">
+                           <svg className="w-6 h-6 text-white/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M9 17V7h4a3 3 0 0 1 0 6H9" />
+                           </svg>
                         </div>
 
                          {/* Upward Cursor Arrow Animation */}
