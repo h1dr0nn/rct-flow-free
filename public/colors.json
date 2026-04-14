@@ -1,0 +1,14 @@
+[
+  { "id": 0, "name": "Red", "hex": "#ef4444" },
+  { "id": 1, "name": "Blue", "hex": "#3b82f6" },
+  { "id": 2, "name": "Green", "hex": "#22c55e" },
+  { "id": 3, "name": "Orange", "hex": "#f97316" },
+  { "id": 4, "name": "Yellow", "hex": "#eab308" },
+  { "id": 5, "name": "Purple", "hex": "#a855f7" },
+  { "id": 6, "name": "Cyan", "hex": "#06b6d4" },
+  { "id": 7, "name": "Magenta", "hex": "#ec4899" },
+  { "id": 8, "name": "Teal", "hex": "#14b8a6" },
+  { "id": 9, "name": "Maroon", "hex": "#991b1b" },
+  { "id": 10, "name": "Lime", "hex": "#84cc16" },
+  { "id": 11, "name": "White", "hex": "#e5e7eb" }
+]
