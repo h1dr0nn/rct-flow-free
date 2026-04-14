@@ -11,8 +11,6 @@ import {
   type Arrow
 } from './stores'
 
-import { ParkingCircle } from 'lucide-react'
-
 function App() {
   const [currentLevelIndex, setCurrentLevelIndex] = useState(0)
   const { gridSize, setGridSize, backgroundColor, filenamePrefix } = useSettings()
