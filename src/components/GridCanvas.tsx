@@ -217,25 +217,22 @@ export function GridCanvas({
     }
 
     const handleEnd = () => {
-        // Guard: don't clear paths if march animation is already playing
         if (isMarching) {
             setActiveArrowId(null)
             setCurrentPath([])
             return
         }
-        setActiveArrowId(prev => {
-            if (prev === null) return null
 
-            const arrow = overlays.arrows.find(a => a.id === prev)
+        if (activeArrowId !== null) {
+            const arrow = overlays.arrows.find(a => a.id === activeArrowId)
             if (arrow && !arrow.isCompleted) {
                 audio.playDisconnect()
-                // Clear path if not completed
                 onArrowsUpdate(overlays.arrows.map(a =>
-                    a.id === prev ? { ...a, path: [{ row: a.row, col: a.col }], isCompleted: false } : a
+                    a.id === activeArrowId ? { ...a, path: [{ row: a.row, col: a.col }], isCompleted: false } : a
                 ))
             }
-            return null
-        })
+            setActiveArrowId(null)
+        }
         setCurrentPath([])
     }
 

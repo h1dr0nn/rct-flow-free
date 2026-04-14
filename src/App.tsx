@@ -13,6 +13,10 @@ import {
 
 function App() {
   const [currentLevelIndex, setCurrentLevelIndex] = useState(0)
+  const [levelsData, setLevelsData] = useState<any[]>([])
+  const [colorMap, setColorMap] = useState<Map<number, string>>(new Map())
+  const [isLoading, setIsLoading] = useState(true)
+
   const { gridSize, setGridSize, backgroundColor, filenamePrefix } = useSettings()
   const { zoom, setZoom, pan, setPan, isZoomInitialized, setIsZoomInitialized } = useGridStore()
   const { resetGrid: resetGridHistory } = useGridHistoryStore()
@@ -26,30 +30,50 @@ function App() {
   const marchDurationRef = useRef(0)
   const rafRef = useRef(0)
 
-  // Check tutorial status
+  // Preload everything on mount
   useEffect(() => {
-    setShowTutorial(true)
-  }, [])
+    const preload = async () => {
+      try {
+        const colorsRes = await fetch('/colors.json')
+        const colors: { id: number; name: string; hex: string }[] = await colorsRes.json()
+        const map = new Map(colors.map(c => [c.id, c.hex]))
+        setColorMap(map)
+
+        // Fetch all 10 levels in parallel
+        const levelPromises = Array.from({ length: 10 }, (_, i) => 
+          fetch(`/levels/level${i + 1}.json`).then(res => res.json())
+        )
+        const allLevels = await Promise.all(levelPromises)
+        setLevelsData(allLevels)
+        setIsLoading(false)
+        setShowTutorial(true)
+      } catch (error) {
+        console.error('Preload failed:', error)
+        addNotification('error', 'Critical: Failed to load game data')
+      }
+    }
+    preload()
+  }, [addNotification])
 
   const completeTutorial = () => {
     setShowTutorial(false)
   }
 
-  const loadLevel = async () => {
-    try {
-      // Load color palette and level data in parallel
-      const [colorsRes, levelRes] = await Promise.all([
-        fetch('/colors.json'),
-        fetch(`/levels/level${currentLevelIndex + 1}.json`)
-      ])
-      const colors: { id: number; name: string; hex: string }[] = await colorsRes.json()
-      const data = await levelRes.json()
+  const loadLevel = useCallback(() => {
+    // Only proceed if preloading is complete
+    if (levelsData.length === 0 || colorMap.size === 0) return
 
-      const colorMap = new Map(colors.map(c => [c.id, c.hex]))
+    try {
+      const data = levelsData[currentLevelIndex]
+      if (!data) return
+
+      // Reset ALL gameplay states for the new level
+      setIsWon(false)
+      setIsMarching(false)
+      setMarchProgress(0)
 
       setGridSize({ width: data.width, height: data.height })
       
-      // Initialize arrows from dot pairs, resolving colorId → hex
       const arrows = data.dots.map((dot: any, index: number) => ({
         id: index + 1,
         row: dot.a.r,
@@ -67,21 +91,17 @@ function App() {
       setOverlays({ arrows, obstacles: [] })
       setNextItemId(arrows.length + 1)
       
-      // Clear grid data
       const emptyGrid = Array(data.height).fill(null).map(() => Array(data.width).fill(false))
       resetGridHistory(emptyGrid)
-      
       setIsZoomInitialized(false)
     } catch (error) {
-      console.error('Failed to load level:', error)
-      addNotification('error', 'Failed to load level')
+      console.error('Failed to parse preloaded level:', error)
     }
-  }
+  }, [currentLevelIndex, levelsData, colorMap, setGridSize, setOverlays, setNextItemId, resetGridHistory, setIsZoomInitialized])
 
   const startMarch = useCallback((currentArrows: Arrow[]) => {
-    // Number of segments to cover for the longest path
     const maxSegments = Math.max(...currentArrows.map(a => (a.path?.length ?? 1) - 1), 1)
-    const animationDistance = maxSegments + 0.5 // Add 0.5 for scaling down at the end
+    const animationDistance = maxSegments + 0.5 
     const MS_PER_CELL = 120
     const duration = animationDistance * MS_PER_CELL
     
@@ -98,7 +118,6 @@ function App() {
       if (t < 1) {
         rafRef.current = requestAnimationFrame(animate)
       } else {
-        // March complete — wait a tiny bit before showing win for better impact
         setTimeout(() => {
           setIsMarching(false)
           setIsWon(true)
@@ -111,7 +130,7 @@ function App() {
               return next < 10 ? next : 0
             })
           }, 2000)
-        }, 400) // 400ms pause to admire the completed board
+        }, 400) 
       }
     }
     rafRef.current = requestAnimationFrame(animate)
@@ -127,23 +146,16 @@ function App() {
 
   const checkWinCondition = (currentArrows: Arrow[]) => {
     if (currentArrows.length === 0) return false
-    
-    // 1. All paths must be completed
     const allCompleted = currentArrows.every(a => a.isCompleted)
     if (!allCompleted) return false
 
-    // 2. All cells must be occupied
     const gridCells = gridSize.width * gridSize.height
     const occupiedCells = new Set()
     currentArrows.forEach(a => {
       a.path?.forEach(p => occupiedCells.add(`${p.row},${p.col}`))
-      // Also add target dot as it's part of the flow but path[0] to path[last] only covers segment points
-      // Actually my GridCanvas path includes all points including start and end dots
     })
 
-    if (occupiedCells.size < gridCells) return false
-
-    return true
+    return occupiedCells.size >= gridCells
   }
 
   const handleArrowsUpdate = (newArrows: Arrow[]) => {
@@ -153,17 +165,27 @@ function App() {
     }
   }
 
-  // Reload when level index changes
-  useEffect(() => {
-    handleReset()
-  }, [currentLevelIndex])
-
-  // Initial load
+  // Effect to load the current level when index or data changes
   useEffect(() => {
     loadLevel()
+  }, [currentLevelIndex, loadLevel])
+
+  useEffect(() => {
     return () => cancelAnimationFrame(rafRef.current)
   }, [])
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0f] text-white">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="w-16 h-16 border-4 border-t-purple-500 border-white/10 rounded-full mb-8"
+        />
+        <h1 className="text-xl font-black tracking-widest uppercase opacity-50">Syncing Levels...</h1>
+      </div>
+    )
+  }
 
   return (
     <div
