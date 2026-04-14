@@ -20,7 +20,9 @@ interface GridCanvasProps {
     setIsZoomInitialized: (initialized: boolean) => void
     // March animation
     isMarching: boolean
+    isWon?: boolean
     marchProgress: number  // 0..1
+    maxLength?: number     // Longest path length for speed-based normalization
 }
 
 const CELL_SIZE = 60 // Larger for gameplay
@@ -37,10 +39,14 @@ export function GridCanvas({
     isZoomInitialized,
     setIsZoomInitialized,
     isMarching,
+    isWon,
     marchProgress,
+    maxLength = 1,
 }: GridCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const handleMoveRef = useRef<((e: any) => void) | null>(null)
+    const handleEndRef = useRef<(() => void) | null>(null)
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
     
     // Gameplay state
@@ -161,6 +167,15 @@ export function GridCanvas({
                 }
             }
 
+            // Block movement if hitting any dot (source or target) of another color
+            const isOtherDot = overlays.arrows.some(a => 
+                a.id !== activeArrowId && (
+                    (a.row === coords.row && a.col === coords.col) ||
+                    (a.targetRow === coords.row && a.targetCol === coords.col)
+                )
+            )
+            if (isOtherDot) return
+
             // Check if hitting another arrow's path -> truncate that arrow
             const collidingArrow = overlays.arrows.find(a => 
                 a.id !== activeArrowId && 
@@ -202,14 +217,20 @@ export function GridCanvas({
     }
 
     const handleEnd = () => {
+        // Guard: don't clear paths if march animation is already playing
+        if (isMarching) {
+            setActiveArrowId(null)
+            setCurrentPath([])
+            return
+        }
         setActiveArrowId(prev => {
             if (prev === null) return null
-            
+
             const arrow = overlays.arrows.find(a => a.id === prev)
             if (arrow && !arrow.isCompleted) {
                 audio.playDisconnect()
-                // As per user request "1. xoá": clear path if not completed
-                onArrowsUpdate(overlays.arrows.map(a => 
+                // Clear path if not completed
+                onArrowsUpdate(overlays.arrows.map(a =>
                     a.id === prev ? { ...a, path: [{ row: a.row, col: a.col }], isCompleted: false } : a
                 ))
             }
@@ -218,25 +239,20 @@ export function GridCanvas({
         setCurrentPath([])
     }
 
+    // Keep refs pointing to latest handlers so window listeners never have stale closures
+    handleMoveRef.current = handleMove
+    handleEndRef.current = handleEnd
+
     // Window listeners for global drag support
     useEffect(() => {
         if (activeArrowId === null) return
 
         const onWindowMove = (e: MouseEvent | TouchEvent) => {
-            // Need to handle the event manually here since it's a window listener
-            const coords = getGridCoords(e as any) 
-            if (!coords) return
-            
-            // We still want to boundary check for logic, but not end the drag
-            if (coords.row < 0 || coords.row >= rows || coords.col < 0 || coords.col >= cols) return
-            
-            // Re-use logic from handleMove but adapted for window event
-            // (Shared logic could be extracted, but let's keep it simple for now)
-            handleMove(e as any)
+            handleMoveRef.current?.(e as any)
         }
 
         const onWindowUp = () => {
-            handleEnd()
+            handleEndRef.current?.()
         }
 
         window.addEventListener('mousemove', onWindowMove)
@@ -250,7 +266,7 @@ export function GridCanvas({
             window.removeEventListener('touchmove', onWindowMove)
             window.removeEventListener('touchend', onWindowUp)
         }
-    }, [activeArrowId, currentPath, overlays.arrows]) // Dependencies ensure we have fresh state
+    }, [activeArrowId]) // Refs keep handlers fresh; only re-register when drag starts/stops
 
     // Draw
     useEffect(() => {
@@ -280,88 +296,93 @@ export function GridCanvas({
             ctx.stroke()
         }
 
-        // Draw paths
+        // Draw paths and dots
         overlays.arrows.forEach(arrow => {
             if (!arrow.path || arrow.path.length < 1) return
-            
+
+            // 1. Calculate animation position (floatIdx)
+            // Use maxLength + buffer to ensure all arrows move at the same speed
+            let floatIdx = 0
+            let cellsCovered = 0
+            if ((isMarching || isWon) && arrow.path.length >= 1) {
+                // If won, force progress to 1 (final state)
+                const globalProgress = isWon ? 1 : (isNaN(marchProgress) ? 0 : Math.max(0, Math.min(marchProgress, 1)))
+                // Must match the 0.5 buffer added in App.tsx
+                const totalAnimatedDistance = (maxLength - 1) + 0.5
+                cellsCovered = globalProgress * totalAnimatedDistance
+                floatIdx = Math.min(cellsCovered, arrow.path.length - 1)
+            }
+
+            const i0 = Math.floor(floatIdx)
+            const i1 = Math.min(i0 + 1, arrow.path.length - 1)
+            const frac = floatIdx - i0
+            const fromCell = arrow.path[i0]
+            const toCell = arrow.path[i1] || fromCell
+
+            if (!fromCell) return
+
+            // Current position of the source square
+            const squareX = ((1 - frac) * fromCell.col + frac * toCell.col) * CELL_SIZE + CELL_SIZE / 2
+            const squareY = ((1 - frac) * fromCell.row + frac * toCell.row) * CELL_SIZE + CELL_SIZE / 2
+
+            // 2. Draw path (retract behind square)
             ctx.save()
             ctx.lineCap = 'round'
             ctx.lineJoin = 'round'
             ctx.lineWidth = CELL_SIZE * 0.4
             ctx.strokeStyle = arrow.color
 
-            // Glow for completed
-            if (arrow.isCompleted) {
-                ctx.shadowBlur = 15
-                ctx.shadowColor = arrow.color
-            }
-
             ctx.beginPath()
-            const startX = arrow.path[0].col * CELL_SIZE + CELL_SIZE / 2
-            const startY = arrow.path[0].row * CELL_SIZE + CELL_SIZE / 2
-            ctx.moveTo(startX, startY)
-            for (let i = 1; i < arrow.path.length; i++) {
-                ctx.lineTo(
-                    arrow.path[i].col * CELL_SIZE + CELL_SIZE / 2,
-                    arrow.path[i].row * CELL_SIZE + CELL_SIZE / 2
-                )
+            // Start line from the current square position
+            ctx.moveTo(squareX, squareY)
+            // Draw remaining segments of the path ahead of the square
+            for (let i = i1; i < arrow.path.length; i++) {
+                const p = arrow.path[i]
+                if (p) {
+                    ctx.lineTo(
+                        p.col * CELL_SIZE + CELL_SIZE / 2,
+                        p.row * CELL_SIZE + CELL_SIZE / 2
+                    )
+                }
             }
             ctx.stroke()
             ctx.restore()
-        })
 
-        // Draw dots — squares for source, circles for target
-        overlays.arrows.forEach(arrow => {
-            const drawCircle = (r: number, c: number) => {
-                const x = c * CELL_SIZE + CELL_SIZE / 2
-                const y = r * CELL_SIZE + CELL_SIZE / 2
-                ctx.fillStyle = arrow.color
-                ctx.beginPath()
-                ctx.arc(x, y, CELL_SIZE * 0.35, 0, Math.PI * 2)
-                ctx.fill()
-                ctx.fillStyle = 'rgba(255,255,255,0.25)'
-                ctx.beginPath()
-                ctx.arc(x - CELL_SIZE * 0.08, y - CELL_SIZE * 0.08, CELL_SIZE * 0.1, 0, Math.PI * 2)
-                ctx.fill()
-            }
-            const drawSquare = (x: number, y: number) => {
-                const s = CELL_SIZE * 0.3
-                const r = s * 0.25 // corner radius
-                ctx.fillStyle = arrow.color
-                ctx.beginPath()
-                ctx.roundRect(x - s, y - s, s * 2, s * 2, r)
-                ctx.fill()
-                ctx.fillStyle = 'rgba(255,255,255,0.25)'
-                ctx.fillRect(x - s * 0.45, y - s * 0.45, s * 0.35, s * 0.35)
+            // 3. Draw dots
+            // Target circle (always fixed)
+            const tx = arrow.targetCol * CELL_SIZE + CELL_SIZE / 2
+            const ty = arrow.targetRow * CELL_SIZE + CELL_SIZE / 2
+            ctx.fillStyle = arrow.color
+            ctx.beginPath()
+            ctx.arc(tx, ty, CELL_SIZE * 0.35, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.fillStyle = 'rgba(255,255,255,0.25)'
+            ctx.beginPath()
+            ctx.arc(tx - CELL_SIZE * 0.08, ty - CELL_SIZE * 0.08, CELL_SIZE * 0.1, 0, Math.PI * 2)
+            ctx.fill()
+
+            // Source square (at current animated position)
+            let squareScale = 1
+            if (isMarching || isWon) {
+                const arrowMaxIdx = arrow.path.length - 1
+                const extra = cellsCovered - arrowMaxIdx
+                if (extra > 0) {
+                    squareScale = Math.max(0, 1 - extra * 5) // Shrink to 0 over 0.2 cells worth of progress
+                }
             }
 
-            // Target — always circle at fixed position
-            drawCircle(arrow.targetRow, arrow.targetCol)
-
-            // Source — square, position depends on march state
-            if (isMarching && arrow.path && arrow.path.length >= 2) {
-                // Interpolate square position along path
-                const t = marchProgress
-                const maxIdx = arrow.path.length - 1
-                const floatIdx = t * maxIdx
-                const i0 = Math.min(Math.floor(floatIdx), maxIdx)
-                const i1 = Math.min(i0 + 1, maxIdx)
-                const frac = floatIdx - i0
-                const fromCell = arrow.path[i0]
-                const toCell = arrow.path[i1]
-                const sx = ((1 - frac) * fromCell.col + frac * toCell.col) * CELL_SIZE + CELL_SIZE / 2
-                const sy = ((1 - frac) * fromCell.row + frac * toCell.row) * CELL_SIZE + CELL_SIZE / 2
-                drawSquare(sx, sy)
-            } else {
-                drawSquare(
-                    arrow.col * CELL_SIZE + CELL_SIZE / 2,
-                    arrow.row * CELL_SIZE + CELL_SIZE / 2,
-                )
-            }
+            const s = CELL_SIZE * 0.3 * squareScale
+            const r = s * 0.25 // corner radius
+            ctx.fillStyle = arrow.color
+            ctx.beginPath()
+            ctx.roundRect(squareX - s, squareY - s, s * 2, s * 2, r)
+            ctx.fill()
+            ctx.fillStyle = 'rgba(255,255,255,0.25)'
+            ctx.fillRect(squareX - s * 0.45, squareY - s * 0.45, s * 0.35, s * 0.35)
         })
 
         ctx.restore()
-    }, [overlays, rows, cols, zoom, pan, activeArrowId, currentPath, isMarching, marchProgress])
+    }, [overlays, rows, cols, zoom, pan, activeArrowId, currentPath, isMarching, isWon, marchProgress, maxLength])
 
     return (
         <div ref={containerRef} className="w-full h-full relative cursor-crosshair touch-none">

@@ -7,7 +7,7 @@ class AudioEngine {
         }
     }
 
-    private playTone(freq: number, type: OscillatorType, duration: number, volume: number = 0.1) {
+    private playTone(freq: number, type: OscillatorType, duration: number, volume: number = 0.2) {
         this.init()
         if (!this.ctx) return
 
@@ -28,18 +28,18 @@ class AudioEngine {
     }
 
     playConnect() {
-        this.playTone(440, 'sine', 0.1, 0.05)
-        setTimeout(() => this.playTone(880, 'sine', 0.1, 0.05), 50)
+        this.playTone(440, 'sine', 0.1, 0.15)
+        setTimeout(() => this.playTone(880, 'sine', 0.1, 0.15), 50)
     }
 
     playDisconnect() {
-        this.playTone(220, 'sine', 0.1, 0.05)
+        this.playTone(220, 'sine', 0.1, 0.15)
     }
 
     playWin() {
         const notes = [523.25, 659.25, 783.99, 1046.50] // C-E-G-C
         notes.forEach((note, i) => {
-            setTimeout(() => this.playTone(note, 'square', 0.4, 0.03), i * 150)
+            setTimeout(() => this.playTone(note, 'square', 0.4, 0.1), i * 150)
         })
     }
 }
