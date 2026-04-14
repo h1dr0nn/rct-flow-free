@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useNotification, type Arrow } from '../stores'
+import { type Arrow } from '../stores'
 import { audio } from '../utils/audio'
 
 interface GridCanvasProps {
@@ -19,6 +18,9 @@ interface GridCanvasProps {
     setPan: (pan: { x: number, y: number }) => void
     isZoomInitialized: boolean
     setIsZoomInitialized: (initialized: boolean) => void
+    // March animation
+    isMarching: boolean
+    marchProgress: number  // 0..1
 }
 
 const CELL_SIZE = 60 // Larger for gameplay
@@ -28,13 +30,14 @@ export function GridCanvas({
     cols,
     overlays,
     onArrowsUpdate,
-    onWin,
     zoom,
     setZoom,
     pan,
     setPan,
     isZoomInitialized,
     setIsZoomInitialized,
+    isMarching,
+    marchProgress,
 }: GridCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
@@ -102,22 +105,20 @@ export function GridCanvas({
 
     // Input handlers
     const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
+        if (isMarching) return // no input during march animation
         const coords = getGridCoords(e)
         if (!coords) return
         if (coords.row < 0 || coords.row >= rows || coords.col < 0 || coords.col >= cols) return
 
-        // Find if we clicked on a dot or an existing path
-        let arrow = overlays.arrows.find(a => 
-            (a.row === coords.row && a.col === coords.col) || 
-            (a.targetRow === coords.row && a.targetCol === coords.col)
+        // Only allow drag from source (square) dot — not target (circle)
+        let arrow = overlays.arrows.find(a =>
+            a.row === coords.row && a.col === coords.col
         )
 
         if (arrow) {
-            // Start new path or restart from dot
             setActiveArrowId(arrow.id)
             setCurrentPath([{ row: coords.row, col: coords.col }])
-            // Clear previous path in store for this arrow
-            onArrowsUpdate(overlays.arrows.map(a => 
+            onArrowsUpdate(overlays.arrows.map(a =>
                 a.id === arrow!.id ? { ...a, path: [{ row: coords.row, col: coords.col }], isCompleted: false } : a
             ))
             return
@@ -185,23 +186,17 @@ export function GridCanvas({
             const newPath = [...currentPath, { row: coords.row, col: coords.col }]
             setCurrentPath(newPath)
 
-            // Check if target reached
+            // Check if target reached (source→target only)
             const arrow = overlays.arrows.find(a => a.id === activeArrowId)!
-            const isTarget = coords.row === arrow.targetRow && coords.col === arrow.targetCol
-            const isSource = coords.row === arrow.row && coords.col === arrow.col
+            const reachedTarget = coords.row === arrow.targetRow && coords.col === arrow.targetCol
+                && newPath[0].row === arrow.row && newPath[0].col === arrow.col
 
-            if (arrow.isCompleted) {
+            if (reachedTarget && !arrow.isCompleted) {
                 audio.playConnect()
             }
 
-            // Update store immediately for visual feedback
-            onArrowsUpdate(overlays.arrows.map(a => 
-                a.id === activeArrowId ? { 
-                    ...a, 
-                    path: newPath, 
-                    isCompleted: (newPath[0].row === a.row && newPath[0].col === a.col && isTarget) || 
-                                 (newPath[0].row === a.targetRow && newPath[0].col === a.targetCol && isSource)
-                } : a
+            onArrowsUpdate(overlays.arrows.map(a =>
+                a.id === activeArrowId ? { ...a, path: newPath, isCompleted: reachedTarget } : a
             ))
         }
     }
@@ -315,27 +310,58 @@ export function GridCanvas({
             ctx.restore()
         })
 
-        // Draw dots
+        // Draw dots — squares for source, circles for target
         overlays.arrows.forEach(arrow => {
-            const drawDot = (r: number, c: number) => {
+            const drawCircle = (r: number, c: number) => {
                 const x = c * CELL_SIZE + CELL_SIZE / 2
                 const y = r * CELL_SIZE + CELL_SIZE / 2
                 ctx.fillStyle = arrow.color
                 ctx.beginPath()
                 ctx.arc(x, y, CELL_SIZE * 0.35, 0, Math.PI * 2)
                 ctx.fill()
-                // Shine
-                ctx.fillStyle = 'rgba(255,255,255,0.3)'
+                ctx.fillStyle = 'rgba(255,255,255,0.25)'
                 ctx.beginPath()
-                ctx.arc(x - CELL_SIZE * 0.1, y - CELL_SIZE * 0.1, CELL_SIZE * 0.1, 0, Math.PI * 2)
+                ctx.arc(x - CELL_SIZE * 0.08, y - CELL_SIZE * 0.08, CELL_SIZE * 0.1, 0, Math.PI * 2)
                 ctx.fill()
             }
-            drawDot(arrow.row, arrow.col)
-            drawDot(arrow.targetRow, arrow.targetCol)
+            const drawSquare = (x: number, y: number) => {
+                const s = CELL_SIZE * 0.3
+                const r = s * 0.25 // corner radius
+                ctx.fillStyle = arrow.color
+                ctx.beginPath()
+                ctx.roundRect(x - s, y - s, s * 2, s * 2, r)
+                ctx.fill()
+                ctx.fillStyle = 'rgba(255,255,255,0.25)'
+                ctx.fillRect(x - s * 0.45, y - s * 0.45, s * 0.35, s * 0.35)
+            }
+
+            // Target — always circle at fixed position
+            drawCircle(arrow.targetRow, arrow.targetCol)
+
+            // Source — square, position depends on march state
+            if (isMarching && arrow.path && arrow.path.length >= 2) {
+                // Interpolate square position along path
+                const t = marchProgress
+                const maxIdx = arrow.path.length - 1
+                const floatIdx = t * maxIdx
+                const i0 = Math.min(Math.floor(floatIdx), maxIdx)
+                const i1 = Math.min(i0 + 1, maxIdx)
+                const frac = floatIdx - i0
+                const fromCell = arrow.path[i0]
+                const toCell = arrow.path[i1]
+                const sx = ((1 - frac) * fromCell.col + frac * toCell.col) * CELL_SIZE + CELL_SIZE / 2
+                const sy = ((1 - frac) * fromCell.row + frac * toCell.row) * CELL_SIZE + CELL_SIZE / 2
+                drawSquare(sx, sy)
+            } else {
+                drawSquare(
+                    arrow.col * CELL_SIZE + CELL_SIZE / 2,
+                    arrow.row * CELL_SIZE + CELL_SIZE / 2,
+                )
+            }
         })
 
         ctx.restore()
-    }, [overlays, rows, cols, zoom, pan, activeArrowId, currentPath])
+    }, [overlays, rows, cols, zoom, pan, activeArrowId, currentPath, isMarching, marchProgress])
 
     return (
         <div ref={containerRef} className="w-full h-full relative cursor-crosshair touch-none">

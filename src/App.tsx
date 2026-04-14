@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GridCanvas } from './components/GridCanvas'
 import { audio } from './utils/audio'
@@ -15,12 +15,15 @@ function App() {
   const [currentLevelIndex, setCurrentLevelIndex] = useState(0)
   const { gridSize, setGridSize, backgroundColor, filenamePrefix } = useSettings()
   const { zoom, setZoom, pan, setPan, isZoomInitialized, setIsZoomInitialized } = useGridStore()
-  const gridData = useGridHistoryStore((s) => s.gridData)
-  const setGridData = useGridHistoryStore((s) => s.setGridData)
   const { resetGrid: resetGridHistory } = useGridHistoryStore()
-  const { arrows, setArrows, setOverlays, setNextItemId, clearAll: clearOverlays } = useOverlaysStore()
+  const { arrows, setArrows, setOverlays, setNextItemId } = useOverlaysStore()
   const { addNotification } = useNotification()
   const [isWon, setIsWon] = useState(false)
+  const [isMarching, setIsMarching] = useState(false)
+  const [marchProgress, setMarchProgress] = useState(0)
+  const marchStartRef = useRef(0)
+  const marchDurationRef = useRef(0)
+  const rafRef = useRef(0)
 
   const loadLevel = async () => {
     try {
@@ -65,7 +68,42 @@ function App() {
     }
   }
 
+  const startMarch = useCallback((currentArrows: Arrow[]) => {
+    // Compute duration from longest path — all squares arrive at the same time
+    const longestPath = Math.max(...currentArrows.map(a => a.path?.length ?? 0))
+    const duration = Math.min(Math.max(longestPath * 100, 800), 3000) // 800ms..3s
+    marchDurationRef.current = duration
+    marchStartRef.current = performance.now()
+    setIsMarching(true)
+    setMarchProgress(0)
+
+    const animate = (now: number) => {
+      const elapsed = now - marchStartRef.current
+      const t = Math.min(elapsed / marchDurationRef.current, 1)
+      setMarchProgress(t)
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(animate)
+      } else {
+        // March complete — show win
+        setIsMarching(false)
+        setIsWon(true)
+        audio.playWin()
+        addNotification('success', 'Level Complete!')
+        setTimeout(() => {
+          setCurrentLevelIndex(prev => {
+            const next = prev + 1
+            return next < 10 ? next : 0
+          })
+        }, 2000)
+      }
+    }
+    rafRef.current = requestAnimationFrame(animate)
+  }, [addNotification])
+
   const handleReset = () => {
+    cancelAnimationFrame(rafRef.current)
+    setIsMarching(false)
+    setMarchProgress(0)
     setIsWon(false)
     loadLevel()
   }
@@ -93,19 +131,8 @@ function App() {
 
   const handleArrowsUpdate = (newArrows: Arrow[]) => {
     setArrows(newArrows)
-    if (checkWinCondition(newArrows)) {
-      setIsWon(true)
-      audio.playWin()
-      addNotification('success', 'Level Complete!')
-      
-      // Auto advance after short delay
-      setTimeout(() => {
-        setCurrentLevelIndex(prev => {
-          const next = prev + 1
-          // Loop back to 0 if we run out of levels (1, 2, 3)
-          return next < 10 ? next : 0
-        })
-      }, 2000)
+    if (!isMarching && checkWinCondition(newArrows)) {
+      startMarch(newArrows)
     }
   }
 
@@ -117,29 +144,9 @@ function App() {
   // Initial load
   useEffect(() => {
     loadLevel()
+    return () => cancelAnimationFrame(rafRef.current)
   }, [])
 
-  const handleCellToggle = (row: number, col: number, mode: 'draw' | 'erase' = 'draw') => {
-    setGridData(prev => {
-      if (row < 0 || row >= prev.length || col < 0 || col >= (prev[0]?.length || 0)) return prev
-      const newData = prev.map(r => [...r])
-      newData[row][col] = mode === 'draw'
-      return newData
-    })
-  }
-
-  const handleBulkCellToggle = (updates: { row: number, col: number }[], mode: 'draw' | 'erase' = 'draw') => {
-    setGridData(prev => {
-      const newData = prev.map(r => [...r])
-      const maxRow = prev.length
-      const maxCol = prev[0]?.length || 0
-      updates.forEach(({ row, col }) => {
-        if (row < 0 || row >= maxRow || col < 0 || col >= maxCol) return
-        newData[row][col] = mode === 'draw'
-      })
-      return newData
-    })
-  }
 
   return (
     <div
@@ -188,6 +195,8 @@ function App() {
             setPan={setPan}
             isZoomInitialized={isZoomInitialized}
             setIsZoomInitialized={setIsZoomInitialized}
+            isMarching={isMarching}
+            marchProgress={marchProgress}
           />
 
           {/* Win Overlay */}

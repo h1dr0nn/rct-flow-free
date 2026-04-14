@@ -470,7 +470,7 @@ export function LeftSidebar({ activePanel, onPanelChange, onGenerate, isGenerati
     }
 
     const handleColorRemove = (index: number) => {
-        setSnakePalette(snakePalette.filter((_, i) => i !== index))
+        setSnakePalette(snakePalette.filter((_: string, i: number) => i !== index))
     }
 
     const handleColorChange = (index: number, color: string) => {
@@ -1206,7 +1206,7 @@ export function LeftSidebar({ activePanel, onPanelChange, onGenerate, isGenerati
                                 </button>
                             </div>
                             <div className="space-y-2">
-                                {snakePalette.map((color, idx) => (
+                                {snakePalette.map((color: string, idx: number) => (
                                     <div key={idx} className="flex items-center gap-2">
                                         <ColorPickerPopup
                                             color={color}

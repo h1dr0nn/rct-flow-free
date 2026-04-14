@@ -14,6 +14,8 @@ interface SettingsState {
 
     flowPalette: string[]
     setFlowPalette: (palette: string[]) => void
+    snakePalette: string[]
+    setSnakePalette: (palette: string[]) => void
 
     // File Export
     filenamePrefix: string
@@ -56,6 +58,7 @@ const DEFAULT_SETTINGS = {
     backgroundColor: '#111827',
     checkerboardView: false,
     flowPalette: DEFAULT_PALETTE,
+    snakePalette: DEFAULT_PALETTE,
     filenamePrefix: 'Level',
     filenameSuffix: 'Data',
     restrictDrawToColored: true,
@@ -74,6 +77,7 @@ export const useSettingsStore = create<SettingsState>()(
             setBackgroundColor: (color) => set({ backgroundColor: color }),
             setCheckerboardView: (value) => set({ checkerboardView: value }),
             setFlowPalette: (palette) => set({ flowPalette: palette }),
+            setSnakePalette: (palette) => set({ snakePalette: palette }),
             setFilenamePrefix: (prefix) => set({ filenamePrefix: prefix }),
             setFilenameSuffix: (suffix) => set({ filenameSuffix: suffix }),
             setRestrictDrawToColored: (restrict) => set({ restrictDrawToColored: restrict }),
