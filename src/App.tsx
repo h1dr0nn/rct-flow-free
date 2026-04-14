@@ -264,23 +264,21 @@ function App() {
                     {/* Visual tutorial animation */}
                     <div className="relative w-32 h-32 flex flex-col justify-between">
                       <div className="flex justify-between items-center h-full relative">
-                        {/* Square - Now Static */}
-                        <div className="w-10 h-10 bg-purple-500 rounded-md relative z-10 shadow-[0_0_20px_rgba(168,85,247,0.5)]">
-                           <div className="absolute inset-1 border-2 border-white/20 rounded-sm" />
-                        </div>
+                        {/* Square - Static and Flat */}
+                        <div className="w-10 h-10 bg-purple-500 rounded-lg relative z-10" />
                         
-                        {/* Circle */}
-                        <div className="w-12 h-12 bg-purple-500 rounded-full relative shadow-[0_0_20px_rgba(168,85,247,0.3)]">
-                           <div className="absolute inset-2 border-2 border-white/30 rounded-full" />
-                        </div>
-                        
-                        {/* Connecting Line Animation - Grows from static square */}
+                        {/* Connecting Line Animation - Flat */}
                         <motion.div 
                           initial={{ width: 0 }}
                           animate={{ width: [0, 80, 0] }}
                           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                           className="absolute left-5 top-1/2 -translate-y-1/2 h-4 bg-purple-500/40 rounded-full origin-left"
                         />
+
+                        {/* Circle - Flat with 'P' (Moved after Line for z-index) */}
+                        <div className="w-12 h-12 bg-purple-500 rounded-full relative flex items-center justify-center leading-none z-10">
+                           <span className="text-white/50 font-black text-2xl select-none -translate-y-0.5">P</span>
+                        </div>
 
                          {/* Upward Cursor Arrow Animation */}
                          <motion.div

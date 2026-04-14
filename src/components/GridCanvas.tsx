@@ -356,10 +356,13 @@ export function GridCanvas({
             ctx.beginPath()
             ctx.arc(tx, ty, CELL_SIZE * 0.35, 0, Math.PI * 2)
             ctx.fill()
-            ctx.fillStyle = 'rgba(255,255,255,0.25)'
-            ctx.beginPath()
-            ctx.arc(tx - CELL_SIZE * 0.08, ty - CELL_SIZE * 0.08, CELL_SIZE * 0.1, 0, Math.PI * 2)
-            ctx.fill()
+            
+            // Draw 'P' on circles with 50% alpha
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)' 
+            ctx.font = `900 ${CELL_SIZE * 0.45}px Inter, Arial`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('P', tx, ty + 2) // Offset down by 2px to center perfectly
 
             // Source square (at current animated position)
             let squareScale = 1
@@ -377,8 +380,6 @@ export function GridCanvas({
             ctx.beginPath()
             ctx.roundRect(squareX - s, squareY - s, s * 2, s * 2, r)
             ctx.fill()
-            ctx.fillStyle = 'rgba(255,255,255,0.25)'
-            ctx.fillRect(squareX - s * 0.45, squareY - s * 0.45, s * 0.35, s * 0.35)
         })
 
         ctx.restore()
