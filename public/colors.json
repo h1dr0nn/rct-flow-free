@@ -10,5 +10,7 @@
   { "id": 8, "name": "Teal", "hex": "#14b8a6" },
   { "id": 9, "name": "Maroon", "hex": "#991b1b" },
   { "id": 10, "name": "Lime", "hex": "#84cc16" },
-  { "id": 11, "name": "White", "hex": "#e5e7eb" }
+  { "id": 11, "name": "White", "hex": "#e5e7eb" },
+  { "id": 12, "name": "Coral", "hex": "#fb7185" },
+  { "id": 13, "name": "Indigo", "hex": "#6366f1" }
 ]

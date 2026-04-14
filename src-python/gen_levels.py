@@ -432,7 +432,7 @@ def verify_puzzle(level: dict, time_limit: float = 8.0,
         grid[d["a"]["r"]][d["a"]["c"]] = d["colorId"]
         grid[d["b"]["r"]][d["b"]["c"]] = d["colorId"]
 
-    heads = [(d["a"]["r"], d["a"]["c"]) for d in dots]
+    heads = list((d["a"]["r"], d["a"]["c"]) for d in dots)
     targets = [(d["b"]["r"], d["b"]["c"]) for d in dots]
     done = [False] * n
     filled = n * 2  # endpoints pre-placed
@@ -451,7 +451,10 @@ def verify_puzzle(level: dict, time_limit: float = 8.0,
     t0 = time.time()
     timed_out = False
     nodes = 0
-    max_full = 2 if check_unique else 1  # fast mode: stop at first full solution
+    # In unique mode, stop after 2 full solutions (proves non-unique).
+    # In no-short mode, don't stop at full solutions — keep searching for
+    # short solutions until the search space is exhausted or we time out.
+    max_full = 2 if check_unique else 10_000_000
 
     def dfs(oi: int) -> None:
         nonlocal filled, full_count, has_short, timed_out, nodes
@@ -555,8 +558,6 @@ def verify_puzzle(level: dict, time_limit: float = 8.0,
             return "none"
         if full_count >= 2:
             return "multi"
-    # fast mode: full_count >= 1 means at least one full-board solution exists
-    # and no short solution was found → puzzle is valid
     return "ok"
 
 
@@ -646,9 +647,10 @@ def generate_level(
         if verdict == "ok":
             return level
         if verdict == "timeout":
-            # timeout means solver couldn't find a short solution in time
-            # → puzzle is probably valid
-            return level
+            # timeout is unreliable — a short solution may still exist.
+            # Reject and retry to guarantee puzzle quality.
+            stats["verify_timeout"] += 1
+            continue
         stats[f"verify_{verdict}"] += 1
 
     print(f"  [stats] {stats}", end=" ")
@@ -662,16 +664,16 @@ def generate_level(
 def main() -> None:
     configs = [
         # (w, h, colors, min_manhattan, solver_time, strict_unique, label)
-        (5, 5, 5, 2, 3.0, True,  "Easy"),
-        (5, 5, 5, 2, 3.0, True,  "Easy"),
-        (5, 5, 6, 2, 3.0, True,  "Easy-Med"),
-        (6, 6, 6, 2, 3.0, True,  "Medium"),
-        (6, 6, 7, 2, 3.0, False, "Medium"),
-        (6, 6, 7, 2, 3.0, False, "Med-Hard"),
-        (7, 7, 7, 2, 3.0, False, "Hard"),
-        (7, 7, 8, 2, 3.0, False, "Hard"),
-        (8, 8, 8, 2, 3.0, False, "V.Hard"),
-        (8, 8, 9, 2, 3.0, False, "Expert"),
+        (5, 5, 5, 2,  3.0, True,  "Easy"),
+        (5, 5, 5, 2,  3.0, True,  "Easy"),
+        (5, 5, 6, 2,  3.0, True,  "Easy-Med"),
+        (6, 6, 6, 2,  5.0, True,  "Medium"),
+        (6, 6, 7, 2,  5.0, True,  "Medium"),
+        (6, 6, 7, 2,  5.0, True,  "Med-Hard"),
+        (7, 7, 7, 2, 10.0, False, "Hard"),
+        (7, 7, 8, 2, 10.0, False, "Hard"),
+        (8, 8, 8, 2, 15.0, False, "V.Hard"),
+        (8, 8, 9, 2, 15.0, False, "Expert"),
     ]
 
     out_dir = Path(__file__).resolve().parent.parent / "public" / "levels"
@@ -689,7 +691,7 @@ def main() -> None:
             w, h, colors,
             min_md=min_md,
             min_path_len=3,
-            max_attempts=5000,
+            max_attempts=10000,
             solver_limit=slimit,
             strict_unique=strict,
         )
